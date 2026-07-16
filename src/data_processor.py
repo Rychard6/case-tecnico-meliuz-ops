@@ -1,22 +1,10 @@
-"""
-data_processor.py - Módulo responsável pela limpeza e processamento de dados CSV.
+# Consolida dados brutos de cashback em métricas confiáveis para decisão.
 
-Responsabilidades:
-    - Ler arquivo CSV
-    - Limpar strings financeiras (R$, formatação brasileira)
-    - Agrupar dados por "Grupos de usuários"
-    - Calcular métricas finais (compradores, vendas, comissão, cashback, lucro)
-    - Retornar dados estruturados em dicionário
-
-Type Hints: Todas as funções possuem anotações de tipo.
-Docstrings: Padrão Google.
-"""
-
+import json
 import re
 from typing import Any, Dict
 
 import pandas as pd
-import json
 
 
 REQUIRED_COLUMNS = [
@@ -30,27 +18,8 @@ REQUIRED_COLUMNS = [
 ]
 
 
+# Normaliza valores financeiros exportados em formatos inconsistentes.
 def clean_financial_string(value: Any) -> float:
-    """
-    Limpa strings financeiras em formato brasileiro e converte para float.
-    
-    Transforma:
-        "R$ 1.234,56" -> 1234.56
-        "R$ 1.516" -> 1516.0
-        "1.516 R$" -> 1516.0
-        "93.390 R$" -> 93390.0
-        "  " ou "" -> 0.0
-    
-    Args:
-        value: String contendo valor financeiro com R$, espaços, etc.
-        
-    Returns:
-        float: Valor numérico limpo.
-        
-    Raises:
-        ValueError: Se a conversão não for possível.
-    """
-    
     if pd.isna(value):
         return 0.0
 
@@ -82,17 +51,8 @@ def clean_financial_string(value: Any) -> float:
         ) from exc
 
 
+# Bloqueia arquivos fora do schema antes de calcular métricas executivas.
 def validate_required_columns(df: pd.DataFrame) -> None:
-    """
-    Valida se o DataFrame contém todas as colunas obrigatórias do schema.
-
-    Args:
-        df: DataFrame com dados brutos do teste A/B.
-
-    Raises:
-        ValueError: Se alguma coluna obrigatória estiver ausente.
-    """
-
     missing_columns = [column for column in REQUIRED_COLUMNS if column not in df.columns]
 
     if missing_columns:
@@ -102,21 +62,16 @@ def validate_required_columns(df: pd.DataFrame) -> None:
         )
 
 
+# Aceita variações comuns de encoding e separador vindas de exportações manuais.
 def load_and_validate_csv(file_path: str) -> pd.DataFrame:
-    """
-    Carrega um arquivo CSV e valida que as colunas esperadas existem.
-    Tenta múltiplos encodings e separadores para maior robustez.
-    """
     try:
         encodings = ["utf-8", "latin-1", "iso-8859-1", "cp1252"]
         df = None
-        
-        # Tenta descobrir o encoding e o separador (, ou ;)
+
         for encoding in encodings:
-            for sep in [",", ";"]: 
+            for sep in [",", ";"]:
                 try:
                     temp_df = pd.read_csv(file_path, encoding=encoding, sep=sep)
-                    # Se separou em mais de 1 coluna, achamos o formato certo!
                     if len(temp_df.columns) > 1:
                         df = temp_df
                         break
@@ -124,48 +79,35 @@ def load_and_validate_csv(file_path: str) -> pd.DataFrame:
                     continue
             if df is not None:
                 break
-                
+
         if df is None:
             raise ValueError("Não foi possível ler o CSV com nenhuma codificação")
-        
-        # BLINDAGEM: Remove espaços em branco invisíveis dos nomes das colunas
+
         df.columns = df.columns.str.strip()
-        
+
         validate_required_columns(df)
         return df
-    
+
     except FileNotFoundError:
         raise FileNotFoundError(f"Arquivo CSV não encontrado: {file_path}")
     except pd.errors.EmptyDataError:
         raise ValueError(f"Arquivo CSV vazio: {file_path}")
 
 
+# Agrega o teste por grupo e calcula o lucro líquido de cashback.
 def process_dataframe_data(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
-    # ... (docstring original) ...
     validate_required_columns(df)
     df = df.copy()
 
-    # BLINDAGEM: Limpa espaços do nome dos grupos e remove valores nulos
     df["Grupos de usuários"] = df["Grupos de usuários"].astype(str).str.strip()
     df = df[df["Grupos de usuários"].str.lower() != "nan"]
 
-    # Limpar dados financeiros
     df["comissão_limpo"] = df["comissão"].apply(clean_financial_string)
     df["cashback_limpo"] = df["cashback"].apply(clean_financial_string)
     df["vendas_totais_limpo"] = df["vendas totais"].apply(clean_financial_string)
 
-    validate_required_columns(df)
-    df = df.copy()
-
-    # Limpar dados financeiros
-    df["comissão_limpo"] = df["comissão"].apply(clean_financial_string)
-    df["cashback_limpo"] = df["cashback"].apply(clean_financial_string)
-    df["vendas_totais_limpo"] = df["vendas totais"].apply(clean_financial_string)
-
-    # Garantir que compradores é int
     df["compradores"] = pd.to_numeric(df["compradores"], errors="coerce").fillna(0).astype(int)
 
-    # Agrupar por "Grupos de usuários" e calcular métricas
     grouped_data: Dict[str, Dict[str, Any]] = {}
 
     for grupo, group_df in df.groupby("Grupos de usuários"):
@@ -189,20 +131,8 @@ def process_dataframe_data(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
     return grouped_data
 
 
+# Entrega a estrutura consumida pela camada de LLM.
 def process_csv_data(file_path: str) -> Dict[str, Dict[str, Any]]:
-    """
-    Processa dados brutos do CSV: leitura, limpeza e cálculo de métricas.
-
-    Args:
-        file_path: Caminho do arquivo CSV.
-
-    Returns:
-        Dict com métricas consolidadas por "Grupos de usuários".
-
-    Raises:
-        ValueError: Se arquivo ou dados não podem ser processados.
-    """
-
     try:
         df = load_and_validate_csv(file_path)
         return process_dataframe_data(df)
@@ -211,26 +141,14 @@ def process_csv_data(file_path: str) -> Dict[str, Dict[str, Any]]:
         raise ValueError(f"Erro ao processar CSV ({file_path}): {e}")
 
 
+# Protege integrações posteriores contra estruturas incompletas.
 def validate_processed_data(data: Dict[str, Dict[str, Any]]) -> bool:
-    """
-    Valida a estrutura dos dados processados.
-    
-    Args:
-        data: Dicionário de dados processados.
-        
-    Returns:
-        bool: True se estrutura é válida.
-        
-    Raises:
-        ValueError: Se estrutura é inválida.
-    """
-    
     required_keys = {
         "total_compradores",
         "total_vendas",
         "total_comissao",
         "total_cashback",
-        "lucro_meliuz"
+        "lucro_meliuz",
     }
     
     for grupo, metrics in data.items():
@@ -250,13 +168,11 @@ def validate_processed_data(data: Dict[str, Dict[str, Any]]) -> bool:
     return True
 
 
-# Exemplo de uso (descomente para testes locais)
 if __name__ == "__main__":
-    # Teste local
     try:
         data = process_csv_data("data/exemplo.csv")
         validate_processed_data(data)
-        print("✓ Dados processados com sucesso:")
+        print("Dados processados com sucesso:")
         print(json.dumps(data, indent=2, ensure_ascii=False))
-    except Exception as e:
-        print(f"✗ Erro: {e}")
+    except Exception as error:
+        print(f"Erro: {error}")

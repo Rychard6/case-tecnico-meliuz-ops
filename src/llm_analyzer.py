@@ -1,25 +1,14 @@
-"""
-llm_analyzer.py - Módulo responsável pela análise com IA (LLM).
-
-Responsabilidades:
-    - Receber dados processados
-    - Criar system prompt forte (Head de Operações, foco em lucro)
-    - Chamar API do LLM (Google Gemini ou OpenAI)
-    - Retornar análise em Markdown com veredito final
-
-Type Hints: Todas as funções possuem anotações de tipo.
-Docstrings: Padrão Google.
-"""
+# Centraliza a chamada às LLMs para transformar métricas em recomendação executiva.
 
 import os
-import json
-from typing import Dict, Any, Optional
+from typing import Any, Dict
+
 from dotenv import load_dotenv
 
-# Carregar variáveis de ambiente
+# Carrega chaves locais sem exigir acoplamento com a CLI.
 load_dotenv()
 
-# Importações condicionais baseadas na API disponível
+# Permite executar com Gemini ou OpenAI conforme dependências instaladas.
 try:
     import google.generativeai as genai
     HAS_GEMINI = True
@@ -33,20 +22,15 @@ except ImportError:
     HAS_OPENAI = False
 
 
+class MissingLLMConfigurationError(RuntimeError):
+    pass
+
+
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+
 def get_system_prompt() -> str:
-    """
-    Retorna um system prompt forte para o LLM atuar como Head de Operações.
-    
-    O prompt define:
-        - Papel: Head de Operações focado em rentabilidade
-        - Objetivo: Recomendar qual variante escalar para 100% do tráfego
-        - Métricas principais: Lucro Meliuz, Volume de Vendas, ROI
-        - Formato de saída: Markdown estruturado
-    
-    Returns:
-        str: System prompt completo.
-    """
-    
     return """
 Você é um **Head de Operações sênior** focado em rentabilidade e escalabilidade.
 
@@ -61,40 +45,31 @@ Sua missão é analisar dados de testes A/B de cashback e fornecer uma recomenda
 **Formato de Resposta (OBRIGATÓRIO):**
 Retorne um relatório em Markdown com estas seções:
 
-1. **📊 Resumo Executivo**
+1. **Resumo Executivo**
    - Objetivo do teste
    - Grupos testados
    - Período de análise (se disponível)
 
-2. **📈 Análise Comparativa**
+2. **Análise Comparativa**
    - Tabela com métricas de cada grupo
    - Destaques e anomalias
 
-3. **🎯 Veredito Final**
+3. **Veredito Final**
    - Qual variante vencer
    - Por qual razão (baseado nos critérios)
    - Confiança da recomendação (Alta/Média/Baixa)
    - Riscos identificados (se houver)
 
-4. **⚡ Próximos Passos**
+4. **Próximos Passos**
    - Recomendações de monitoramento
    - Testes sugeridos para futuro
 
-**Tom:** Profissional, direto e focado em números. Use emojis para destacar seções, mas mantenha a credibilidade analítica.
+**Tom:** Profissional, direto e focado em números. Não use emojis, slogans ou linguagem promocional.
 """
 
 
+# Organiza as métricas de negócio para reduzir ambiguidade na decisão da LLM.
 def format_data_for_llm(data: Dict[str, Dict[str, Any]]) -> str:
-    """
-    Formata os dados processados em um texto bem estruturado para enviar ao LLM.
-    
-    Args:
-        data: Dicionário com dados agrupados por "Grupos de usuários".
-        
-    Returns:
-        str: String formatada com as métricas organizadas.
-    """
-    
     text = "**DADOS DO TESTE A/B (CASHBACK):**\n\n"
     
     for i, (grupo, metrics) in enumerate(data.items(), 1):
@@ -105,7 +80,7 @@ def format_data_for_llm(data: Dict[str, Dict[str, Any]]) -> str:
         text += f"- **Total de Cashback:** R$ {metrics['total_cashback']:,.2f}\n"
         text += f"- **Lucro Meliuz (comissão - cashback):** R$ {metrics['lucro_meliuz']:,.2f}\n"
         
-        # Calcular taxas adicionais para facilitar análise
+        # Expõe eficiência para a decisão não depender apenas de volume bruto.
         if metrics['total_vendas'] > 0:
             taxa_cashback = (metrics['total_cashback'] / metrics['total_vendas']) * 100
             roi = (metrics['lucro_meliuz'] / metrics['total_vendas']) * 100
@@ -117,30 +92,17 @@ def format_data_for_llm(data: Dict[str, Dict[str, Any]]) -> str:
     return text
 
 
+# Executa a análise principal quando a chave do Gemini está disponível.
 def call_gemini_api(data: Dict[str, Dict[str, Any]]) -> str:
-    """
-    Chama a API do Google Gemini para análise.
-    
-    Args:
-        data: Dicionário com dados processados.
-        
-    Returns:
-        str: Resposta do LLM em Markdown.
-        
-    Raises:
-        RuntimeError: Se a API key não estiver configurada.
-        Exception: Se a chamada à API falhar.
-    """
-    
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError(
+        raise MissingLLMConfigurationError(
             "GEMINI_API_KEY não encontrada nas variáveis de ambiente. "
             "Configure em .env"
         )
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-3-flash-preview")
+    model = genai.GenerativeModel(GEMINI_MODEL)
     
     system_prompt = get_system_prompt()
     formatted_data = format_data_for_llm(data)
@@ -164,28 +126,15 @@ Com base nesses dados, forneça uma análise detalhada seguindo o formato especi
         
         return response.text
     
-    except Exception as e:
-        raise Exception(f"Erro ao chamar API Gemini: {e}")
+    except Exception as error:
+        raise RuntimeError(f"Erro ao chamar API Gemini: {error}") from error
 
 
+# Mantém uma segunda rota de LLM para contingência operacional.
 def call_openai_api(data: Dict[str, Dict[str, Any]]) -> str:
-    """
-    Chama a API da OpenAI (GPT) para análise.
-    
-    Args:
-        data: Dicionário com dados processados.
-        
-    Returns:
-        str: Resposta do LLM em Markdown.
-        
-    Raises:
-        RuntimeError: Se a API key não estiver configurada.
-        Exception: Se a chamada à API falhar.
-    """
-    
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise RuntimeError(
+        raise MissingLLMConfigurationError(
             "OPENAI_API_KEY não encontrada nas variáveis de ambiente. "
             "Configure em .env"
         )
@@ -203,7 +152,7 @@ Com base nesses dados, forneça uma análise detalhada seguindo o formato especi
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
@@ -215,56 +164,37 @@ Com base nesses dados, forneça uma análise detalhada seguindo o formato especi
         
         return response.choices[0].message.content
     
-    except Exception as e:
-        raise Exception(f"Erro ao chamar API OpenAI: {e}")
+    except Exception as error:
+        raise RuntimeError(f"Erro ao chamar API OpenAI: {error}") from error
 
 
+# Escolhe a melhor integração disponível sem exigir troca no restante do pipeline.
 def analyze_with_llm(data: Dict[str, Dict[str, Any]]) -> str:
-    """
-    Orquestra a análise com LLM, tentando APIs na ordem: Gemini > OpenAI.
-    
-    Args:
-        data: Dicionário com dados processados por `process_csv_data`.
-        
-    Returns:
-        str: Análise completa em formato Markdown.
-        
-    Raises:
-        RuntimeError: Se nenhuma API estiver configurada.
-        Exception: Se ambas as APIs falharem.
-    """
-    
-    # Validar dados de entrada
     if not isinstance(data, dict) or not data:
         raise ValueError("Dados inválidos ou vazios para análise")
-    
-    # Tentar Gemini primeiro
+
     if HAS_GEMINI:
         try:
             return call_gemini_api(data)
-        except RuntimeError:
-            pass  # API key não configurada, tentar próxima
-        except Exception as e:
-            print(f"⚠ Gemini falhou: {e}. Tentando OpenAI...")
-    
-    # Tentar OpenAI depois
+        except MissingLLMConfigurationError:
+            pass
+        except Exception as error:
+            print(f"Gemini falhou: {error}. Tentando OpenAI.")
+
     if HAS_OPENAI:
         try:
             return call_openai_api(data)
-        except RuntimeError:
-            pass  # API key não configurada
-        except Exception as e:
-            print(f"⚠ OpenAI falhou: {e}")
-    
-    # Se nenhuma API funcionou
+        except MissingLLMConfigurationError:
+            pass
+        except Exception as error:
+            print(f"OpenAI falhou: {error}")
+
     raise RuntimeError(
         "Nenhuma API de LLM disponível. Configure GEMINI_API_KEY ou OPENAI_API_KEY em .env"
     )
 
 
-# Exemplo de uso (descomente para testes locais)
 if __name__ == "__main__":
-    # Dados de exemplo para teste
     sample_data = {
         "Grupo A (Controle)": {
             "total_compradores": 1000,
@@ -291,7 +221,7 @@ if __name__ == "__main__":
     
     try:
         verdict = analyze_with_llm(sample_data)
-        print("✓ Análise gerada com sucesso:")
+        print("Análise gerada com sucesso:")
         print(verdict)
-    except Exception as e:
-        print(f"✗ Erro: {e}")
+    except Exception as error:
+        print(f"Erro: {error}")

@@ -1,104 +1,54 @@
-# ============================================================================
-# .gitignore - Ignore arquivos sensíveis e desnecessários
-# ============================================================================
-
-# ============================================================================
-# Ambiente Virtual
-# ============================================================================
-venv/
-ENV/
-env/
-.venv
-.ENV
-
-# ============================================================================
-# Credenciais e Variáveis de Ambiente
-# ============================================================================
-.env
-.env.local
-.env.*.local
-service-account-key.json
-service-account*.json
-
-# ============================================================================
-# Dados Sensíveis
-# ============================================================================
-data/
-resultados.csv
-*.csv.bak
-
-# ============================================================================
-# IDE e Editors
-# ============================================================================
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-*.code-workspace
-
-# ============================================================================
-# Python
-# ============================================================================
+# Python bytecode
 __pycache__/
-*.py[cod]
+*.pyc
+*.pyo
+*.pyd
 *$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
 
-# ============================================================================
-# Pytest e Testes
-# ============================================================================
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment and credentials
+.env
+.env.*
+!.env.example
+service-account*.json
+google-service-account*.json
+
+# Test and coverage output
 .pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
-*.cover
-*.py,cover
 .tox/
 .hypothesis/
 
-# ============================================================================
-# mypy
-# ============================================================================
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
 
-# ============================================================================
-# Logs
-# ============================================================================
-*.log
-logs/
+# Local generated outputs
+resultados.csv
+relatorios/*.md
+!relatorios/.gitkeep
+*.csv.bak
 
-# ============================================================================
-# OS
-# ============================================================================
+# IDE and OS files
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
 
-# ============================================================================
-# Dependências
-# ============================================================================
-node_modules/
-package-lock.json
-yarn.lock
+# Logs
+*.log
+logs/

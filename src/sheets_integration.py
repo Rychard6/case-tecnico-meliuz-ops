@@ -1,26 +1,18 @@
-"""
-sheets_integration.py - Módulo responsável pela integração com Google Sheets.
+# Registra decisões no Google Sheets e mantém CSV local como contingência.
 
-Responsabilidades:
-    - Autenticar com Google Sheets via Service Account (JSON)
-    - Anexar resultado a uma planilha
-    - Implementar fallback robusto para arquivo local CSV se Google falhar
-
-Type Hints: Todas as funções possuem anotações de tipo.
-Docstrings: Padrão Google.
-"""
-
-import os
 import csv
-from typing import Optional, Dict, Any
+import json
+import os
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Literal, Optional
+
 from dotenv import load_dotenv
 
-# Carregar variáveis de ambiente
+# Carrega credenciais locais sem exigir configuração global do ambiente.
 load_dotenv()
 
-# Importação condicional de gspread
+# Mantém o fallback local ativo mesmo quando a integração não está instalada.
 try:
     import gspread
     from google.oauth2.service_account import Credentials
@@ -29,55 +21,36 @@ except ImportError:
     HAS_GSPREAD = False
 
 
-# Constantes
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
 RESULTADOS_CSV = os.getenv("RESULTADOS_CSV", "resultados.csv")
 FALLBACK_HEADERS = ["Data Análise", "Dataset", "Veredito IA"]
+SHEETS_SUCCESS = "success"
+SHEETS_FALLBACK_REQUIRED = "fallback_required"
+SHEETS_ERROR = "error"
+SheetsSaveStatus = Literal["success", "fallback_required", "error"]
 
 
-def get_sheets_credentials() -> Optional[Credentials]:
-    """
-    Carrega credenciais do Google Sheets a partir de arquivo JSON (Service Account).
-    
-    Espera uma variável de ambiente apontando para o arquivo JSON ou o JSON em si.
-    Variáveis suportadas:
-        - GOOGLE_SERVICE_ACCOUNT_JSON: Caminho do arquivo JSON
-        - GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT: Conteúdo do JSON (em string)
-    
-    Returns:
-        Credentials: Objeto de credenciais autenticadas.
-        None: Se as credenciais não estiverem disponíveis.
-    """
-    
+# Aceita arquivo JSON ou conteúdo JSON para facilitar execução local e CI.
+def get_sheets_credentials() -> Optional[Any]:
     if not HAS_GSPREAD:
         return None
-    
+
     try:
-        # Tentar carregar de arquivo
         json_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
         if json_path and os.path.exists(json_path):
-            scopes = [
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            credentials = Credentials.from_service_account_file(json_path, scopes=scopes)
-            return credentials
-        
-        # Tentar carregar de variável de ambiente com conteúdo JSON
+            return Credentials.from_service_account_file(json_path, scopes=SCOPES)
+
         json_content = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT")
         if json_content:
-            import json as json_lib
-            json_dict = json_lib.loads(json_content)
-            scopes = [
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            credentials = Credentials.from_service_account_info(json_dict, scopes=scopes)
-            return credentials
-        
+            return Credentials.from_service_account_info(json.loads(json_content), scopes=SCOPES)
+
         return None
-    
-    except Exception as e:
-        print(f"⚠ Erro ao carregar credenciais do Google: {e}")
+
+    except Exception as error:
+        print(f"Erro ao carregar credenciais do Google Sheets: {error}")
         return None
 
 
@@ -85,63 +58,31 @@ def save_to_sheets(
     timestamp: str,
     dataset_name: str,
     verdict: str
-) -> bool:
-    """
-    Salva o resultado da análise no Google Sheets.
-    
-    Operações:
-        1. Autentica com Service Account
-        2. Abre a planilha especificada (via GOOGLE_SHEETS_ID)
-        3. Acessa a primeira aba
-        4. Anexa uma linha com: [timestamp, dataset_name, verdict]
-    
-    Args:
-        timestamp: Data/hora da análise (ISO format).
-        dataset_name: Nome do arquivo/dataset analisado.
-        verdict: Veredito da IA (texto completo).
-        
-    Returns:
-        bool: True se sucesso, False caso contrário.
-    """
-    
+) -> SheetsSaveStatus:
     if not HAS_GSPREAD:
-        print("⚠ gspread não está instalado. Pulando salvamento no Sheets.")
-        return False
-    
+        print("gspread não está instalado. Iniciando fallback local.")
+        return SHEETS_FALLBACK_REQUIRED
+
     try:
-        # Obter credenciais
         credentials = get_sheets_credentials()
         if not credentials:
-            print("⚠ Credenciais do Google Sheets não configuradas.")
-            return False
-        
-        # Obter ID da planilha
+            print("Credenciais do Sheets ausentes. Iniciando fallback local.")
+            return SHEETS_FALLBACK_REQUIRED
+
         sheet_id = os.getenv("GOOGLE_SHEETS_ID")
         if not sheet_id:
-            print("⚠ GOOGLE_SHEETS_ID não configurado em .env")
-            return False
-        
-        # Autenticar e abrir planilha
+            print("Credenciais do Sheets ausentes. Iniciando fallback local.")
+            return SHEETS_FALLBACK_REQUIRED
+
         client = gspread.authorize(credentials)
-        spreadsheet = client.open_by_key(sheet_id)
-        worksheet = spreadsheet.sheet1  # Primeira aba
-        
-        # Preparar linha
-        new_row = [
-            timestamp,
-            dataset_name,
-            verdict[:500]  # Limitar tamanho do veredito para caber na célula
-        ]
-        
-        # Anexar linha
-        worksheet.append_row(new_row)
-        
-        print(f"✓ Resultado salvo no Google Sheets com sucesso")
-        return True
-    
-    except Exception as e:
-        print(f"✗ Erro ao salvar no Google Sheets: {e}")
-        return False
+        worksheet = client.open_by_key(sheet_id).sheet1
+        worksheet.append_row([timestamp, dataset_name, verdict], value_input_option="RAW")
+
+        return SHEETS_SUCCESS
+
+    except Exception as error:
+        print(f"Erro ao salvar no Google Sheets: {error}")
+        return SHEETS_ERROR
 
 
 def save_fallback_csv(
@@ -149,82 +90,53 @@ def save_fallback_csv(
     dataset_name: str,
     verdict: str
 ) -> bool:
-    """
-    Salva resultado em arquivo CSV local como fallback.
-    
-    Operações:
-        1. Verifica se arquivo resultados.csv existe
-        2. Se não existe, cria com headers
-        3. Anexa linha com dados
-
-    Args:
-        timestamp: Data/hora da análise.
-        dataset_name: Nome do dataset.
-        verdict: Veredito da IA.
-        
-    Returns:
-        bool: True se sucesso, False caso contrário.
-    """
-    
     try:
-        file_exists = os.path.exists(RESULTADOS_CSV)
-        
-        with open(RESULTADOS_CSV, mode="a", newline="", encoding="utf-8") as csvfile:
+        fallback_path = Path(RESULTADOS_CSV)
+        fallback_path.parent.mkdir(parents=True, exist_ok=True)
+        file_exists = fallback_path.exists()
+
+        with fallback_path.open(mode="a", newline="", encoding="utf-8") as csvfile:
             writer = csv.writer(csvfile)
-            
-            # Escrever headers se arquivo é novo
+
             if not file_exists:
                 writer.writerow(FALLBACK_HEADERS)
-            
-            # Escrever linha de dados
-            writer.writerow([
-                timestamp,
-                dataset_name,
-                verdict[:500]  # Limitar tamanho
-            ])
-        
-        print(f"✓ Fallback salvo em {RESULTADOS_CSV}")
+
+            writer.writerow([timestamp, dataset_name, verdict[:500]])
+
         return True
-    
-    except Exception as e:
-        print(f"✗ Erro ao salvar fallback CSV: {e}")
+
+    except Exception as error:
+        print(f"Erro ao salvar fallback CSV: {error}")
         return False
 
 
+# Carrega o histórico local para auditoria simples em execuções sem Sheets.
 def load_resultados_csv() -> list:
-    """
-    Carrega histórico de resultados do arquivo CSV local.
-    
-    Returns:
-        list: Lista de dicionários com histórico.
-    """
-    
     try:
-        if not os.path.exists(RESULTADOS_CSV):
+        fallback_path = Path(RESULTADOS_CSV)
+        if not fallback_path.exists():
             return []
-        
-        with open(RESULTADOS_CSV, mode="r", encoding="utf-8") as csvfile:
+
+        with fallback_path.open(mode="r", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             return list(reader) if reader else []
-    
-    except Exception as e:
-        print(f"✗ Erro ao carregar histórico CSV: {e}")
+
+    except Exception as error:
+        print(f"Erro ao carregar histórico CSV: {error}")
         return []
 
 
-# Exemplo de uso (descomente para testes locais)
 if __name__ == "__main__":
-    # Teste de fallback
     try:
         success = save_fallback_csv(
             timestamp=datetime.now().isoformat(),
             dataset_name="teste_cashback_exemplo",
             verdict="Recomendação: Escalar Grupo C para 100% do tráfego. Lucro 31% superior."
         )
-        
+
         if success:
-            print("\n✓ Teste de fallback completado")
+            print("\nTeste de fallback completado")
             resultados = load_resultados_csv()
             print(f"Registros no fallback: {len(resultados)}")
-    except Exception as e:
-        print(f"✗ Erro: {e}")
+    except Exception as error:
+        print(f"Erro: {error}")

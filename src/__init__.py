@@ -1,6 +1,3 @@
-"""
-Sistema de Análise A/B para Cashback (Meliuz)
-Versão: 1.0
-"""
+# Pacote do pipeline de análise A/B de cashback.
 
 __version__ = "1.0.0"
