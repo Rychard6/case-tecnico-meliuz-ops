@@ -105,16 +105,13 @@ Quando o Google Sheets não estiver configurado, o status operacional do pipelin
 ## Conclusão dos Testes
 
 ### Parceiro A
-
-Resumo linha 1: inserir a variante vencedora e o principal ganho financeiro observado.
-Resumo linha 2: inserir risco relevante, ressalva operacional ou recomendação de monitoramento.
+- **Vencedor: Grupo 1 (~4,2% de cashback).** Entregou o maior lucro líquido absoluto (R$ 404.711,00) e a melhor margem sobre comissão (63,42%).
+- **Risco:** Esta variante reteve o menor volume total de compradores. Requer monitoramento de *churn* para garantir que não haja perda de *market share* para concorrentes mais agressivos.
 
 ### Parceiro B
-
-Resumo linha 1: inserir a variante vencedora e o principal ganho financeiro observado.
-Resumo linha 2: inserir risco relevante, ressalva operacional ou recomendação de monitoramento.
+- **Vencedor: Grupo 1 (4,0% de cashback).** Apresentou o cenário ideal de eficiência: maximizou o lucro líquido (R$ 286.570,00) e simultaneamente gerou o maior volume de vendas (GMV) e compradores.
+- **Observação:** Detectada elasticidade negativa severa nas variantes superiores. O Grupo 3 (9% de cashback) reduziu o lucro em mais de 80% e ainda diminuiu o volume de vendas em 35%.
 
 ### Parceiro C
-
-Resumo linha 1: inserir a variante vencedora e o principal ganho financeiro observado.
-Resumo linha 2: inserir risco relevante, ressalva operacional ou recomendação de monitoramento.
+- **Vencedor: Grupo 1 (5,0% de cashback).** Manteve a operação rentável gerando R$ 34.769,00 de lucro líquido, com o maior volume de vendas entre as opções.
+- **Observação:** O Grupo 2 (7% de cashback) operou no zero a zero (*breakeven*), repassando 100% da comissão ao usuário. Recomenda-se escalar o Grupo 1 imediatamente e, no futuro, testar taxas menores (3% a 4%) para encontrar o piso de elasticidade.
