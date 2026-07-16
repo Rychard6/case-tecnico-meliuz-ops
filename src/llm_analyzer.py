@@ -26,9 +26,7 @@ class MissingLLMConfigurationError(RuntimeError):
     pass
 
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 def get_system_prompt() -> str:
     return """

@@ -52,3 +52,6 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# credenciais.json
+credenciais.json
